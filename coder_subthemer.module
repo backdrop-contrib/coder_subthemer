@@ -1,0 +1,291 @@
+<?php
+/**
+ * @file
+ * Provides primary Backdrop hook implementations.
+ */
+
+if (function_exists('t')) {
+  // This code is being executed inside a process running Backdrop.
+  module_load_include('inc', 'coder_upgrade', 'coder_upgrade');
+  module_load_include('inc', 'coder_upgrade', 'includes/conversion');
+  module_load_include('inc', 'coder_subthemer', 'main');
+}
+
+define('NEW_MACHINE_NAME', 'my_module');
+define('NEW_HUMAN_NAME', 'My new module');
+
+
+/**
+ * Implements hook_permission().
+ */
+function coder_subthemer_permission() {
+  return array(
+    'administer subthemer' => array(
+      'title' => t('Administer Coder Subthemer'),
+      'description' => t('Administer Coder Subthemer.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function coder_subthemer_menu() {
+  // Conversion items.
+  $items['admin/config/development/coder-subthemer'] = array(
+    'title' => 'Create subtheme',
+    'description' => 'Create subtheme from a base theme.',
+    'page callback' => 'backdrop_get_form',
+    'page arguments' => array('coder_subthemer_form'),
+    'access arguments' => array('administer subthemer'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  return $items;
+}
+
+/**
+ * Form builder for the module conversion form.
+ *
+ * The tab contents are assembled in helper functions which allows other modules
+ * to "customize" this form directly without resorting to hook_form_alter.
+ */
+function coder_subthemer_form($form, &$form_state) {
+  // Set default values.
+  list($upgrades, $extensions, $directories, $modules) = coder_upgrade_conversions_form_defaults($form_state);
+
+  // Build the form.
+  $form['tabs'] = array(
+    '#type' => 'vertical_tabs',
+    '#default_tab' => 'edit-directories',
+  );
+  // $form['tabs']['upgrades'] = coder_upgrade_upgrades_build($upgrades);
+  $form['tabs']['extensions'] = coder_upgrade_extensions_build($extensions);
+  $form['tabs']['directories'] = coder_subthemer_directories_build($directories);
+  // $form['tabs']['modules'] = coder_upgrade_modules_build($modules);
+
+  $form['convert'] = array(
+    '#type' => 'submit',
+    '#validate' => array('coder_upgrade_conversions_form_validate'),
+    '#submit' => array('coder_subthemer_form_submit'),
+    '#value' => t('Convert files'),
+    //'#disabled' => !gplib_version_check(),
+  );
+
+  return $form;
+}
+
+/**
+ * Returns form content for directories tab.
+ *
+ * @param array $directories
+ *   User selections or default values.
+ *
+ * @return array
+ *   Form item.
+ */
+function coder_subthemer_directories_build(&$directories) {
+  // Build the directory list.
+  // $deadwood_dir = config_get('coder_upgrade.settings', 'coder_upgrade_dir_old');
+  $dirs = system_rebuild_theme_data();
+
+  $header = array(
+    'name' => array('data' => t('Name'), 'field' => 'name'),
+    'path' => array('data' => t('Location'), 'field' => 'path'),
+  );
+  $i = 0;
+  $rows = array();
+  foreach ($dirs as $dirname => $dir) {
+    $row = array();
+    $row['name'] = isset($directories[$dirname]) ? l($dir->info['name'], coder_upgrade_patch_link($dirname), array('attributes' => array('target' => '_blank'))) : $dir->info['name'];
+    $row['path'] = $dir->uri;
+    $row['#weight'] = ++$i;
+
+    $rows[$dirname] = $row;
+  }
+  $directory_fs = array(
+    '#type' => 'fieldset',
+    '#title' => t('Directories'),
+    '#description' => t('... residing in the selected directories (beneath the files directory), or ...'),
+    '#tree' => TRUE,
+  );
+  $directory_fs['list'] = array(
+    '#type' => 'tableselect',
+    '#header' => $header,
+    '#options' => $rows,
+    '#default_value' => isset($directories) ? $directories : array(),
+    '#empty' => t('No directories available'),
+  );
+
+  return $directory_fs;
+}
+
+/**
+ * Submit handler for the module conversion form.
+ *
+ * Execute the selected module conversion code on the selected file types in the
+ * selected directories or modules.
+ */
+function coder_subthemer_form_submit($form, &$form_state) {
+  // Rebuild form with user selections.
+  $form_state['rebuild'] = TRUE;
+
+  // Apply conversion routines.
+  $success = coder_subthemer_conversions_apply($form_state);
+  if ($success) {
+    backdrop_set_message(t('Module conversion routines were applied.'));
+    backdrop_set_message(t('Click to view the !log.', array('!log' => l(t('conversion log file'), coder_upgrade_path('log'), array('attributes' => array('target' => '_blank'))))));
+    backdrop_set_message(t('To view a <strong>patch file</strong>, click on a <strong>Name link</strong> in the Directories and Modules tabs below.'));
+  }
+  else {
+    backdrop_set_message(t('Module conversion routines failed to complete.'), 'error');
+  }
+}
+
+/**
+ * Applies the module conversion code.
+ *
+ * Execute the selected module conversion code on the selected file types in the
+ * selected directories or modules.
+ *
+ * @return boolean
+ *   TRUE if conversion code was successful, FALSE otherwise.
+ */
+function coder_subthemer_conversions_apply($form_state) {
+  // Prepare conversion parameters.
+  list($extensions, $items) = coder_subthemer_conversions_prepare($form_state);
+      dpm($extensions);
+
+  // Apply conversion routines.
+//   module_load_include('inc', 'coder_upgrade', 'includes/main');
+  if (config_get('coder_upgrade.settings', 'coder_upgrade_use_separate_process')) {
+/*     // Conversion routines will be run in a separate process.
+    backdrop_set_message(t('Module conversion routines will run in a separate process.'));
+    $path = coder_subthemer_parameters_save($upgrades, $extensions, $items);
+    $script = backdrop_get_path('module', 'coder_upgrade') . '/scripts/coder_upgrade.run.php';
+    $output = coder_upgrade_directory_path('base') . 'coder_upgrade.run.txt';
+    $command = "php $script -- file=$path > $output"; // " 2>&1";
+    // Execute the command and capture the output.
+    exec($command, $errors, $success);
+    $success = $success === 0;
+    if ($success && !empty($errors)) {
+      backdrop_set_message(trim(implode("\n", $errors)), 'error');
+    }
+ */  }
+  else {
+    // Conversion routines will be run in the same process.
+    module_load_include('inc', 'coder_upgrade', 'includes/main');
+    backdrop_set_message(t('Module conversion routines will run in the same process.'));
+    $success = coder_subthemer_start($extensions, $items);
+  }
+
+  return $success;
+}
+
+/**
+ * Returns the parameters to submit for module conversion.
+ */
+function coder_subthemer_conversions_prepare($form_state) {
+  // Gather the submitted parameters.
+  list(, $extensions, $directories, ) = coder_subthemer_selections($form_state);
+
+  $new_dir = BACKDROP_ROOT . '/' . coder_upgrade_directory_path('new');
+
+  $items = array();
+
+  foreach ($directories as $key => $directory) {
+    $items[] = array(
+      'name' => $key,
+      'old_dir' => BACKDROP_ROOT . '/' . backdrop_get_path('theme', $key),
+      'new_dir' => $new_dir . NEW_MACHINE_NAME,
+    );
+  }
+
+  return array($extensions, $items);
+}
+
+/**
+ * Saves the runtime parameters to a file for use by script.
+ */
+function coder_subthemer_parameters_save($upgrades, $extensions, $items) {
+  $config = config('coder_upgrade.settings');
+  // Add path to upgrades array for use by script.
+  foreach ($upgrades as $name => &$upgrade) {
+    $upgrade['path'] = backdrop_get_path('module', $upgrade['module']);
+  }
+  // Create paths array.
+  $paths = array(
+    'files_base' => coder_upgrade_directory_path('', FALSE),
+    //'libraries_base' => str_replace('/grammar_parser', '', libraries_get_path('grammar_parser')),
+    'modules_base' => str_replace('/coder', '', backdrop_get_path('module', 'coder')),
+  );
+  // Create variables array.
+  $variables = array(
+    'coder_upgrade_dir' => $config->get('coder_upgrade_dir'),
+    'coder_upgrade_dir_patch' => $config->get('coder_upgrade_dir_patch'),
+
+    'coder_upgrade_replace_files' => $config->get('coder_upgrade_replace_files', FALSE),
+    'coder_upgrade_preserve_array_format' => $config->get('coder_upgrade_preserve_array_format'),
+    'coder_upgrade_enable_debug_output' => $config->get('coder_upgrade_enable_debug_output'),
+    'coder_upgrade_enable_parser_debug_output' => $config->get('coder_upgrade_enable_parser_debug_output'),
+    'coder_upgrade_use_separate_process' => $config->get('coder_upgrade_use_separate_process'),
+  );
+  // Create parameters array.
+  $parameters['paths'] = $paths;
+  $parameters['theme_cache'] = coder_upgrade_path('theme_cache');
+  $parameters['variables'] = $variables;
+  $parameters['upgrades'] = $upgrades;
+  $parameters['extensions'] = $extensions;
+  $parameters['items'] = $items;
+
+  // Write parameters to file.
+  $path = coder_upgrade_path('runtime'); // @todo Use random name and delete afterwards.
+  file_put_contents($path, serialize($parameters));
+
+  return $path;
+}
+
+/**
+ * Returns all submitted values.
+ *
+ * @param array $values
+ *   Array of $form_state['values'].
+ *
+ * @return array
+ *   Arrays of submitted values.
+ */
+function coder_subthemer_selections($form_state) {
+  // Initialize these as not all may be set by some form users.
+  $upgrades = $extensions = $directories = $modules = array();
+
+  // Set keys to validate.
+  $keys = coder_upgrade_selection_types($form_state);
+
+  // Build arrays of each user selection type.
+  $values = $form_state['values'];
+  foreach ($keys as $key) {
+    if (isset($values[$key])) {
+      $$key = coder_subthemer_selections_extract($values[$key]['list']);
+    }
+  }
+  return array($upgrades, $extensions, $directories, $modules);
+}
+
+/**
+ * Returns a list of submitted values.
+ *
+ * @param array $values
+ *   Array slice from $form_state['values'].
+ *
+ * @return array
+ *   Array of submitted values.
+ */
+function coder_subthemer_selections_extract($values) {
+  $selections = array();
+  foreach ($values as $key => $value) {
+    if ($value) {
+      $selections[$key] = $key;
+    }
+  }
+  return $selections;
+}
