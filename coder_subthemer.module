@@ -61,9 +61,7 @@ function coder_subthemer_form($form, &$form_state) {
   );
   // $form['tabs']['upgrades'] = coder_upgrade_upgrades_build($upgrades);
   $form['tabs']['extensions'] = coder_upgrade_extensions_build($extensions);
-  $form['tabs']['directories'] = coder_subthemer_directories_build($directories);
-  // $form['tabs']['modules'] = coder_upgrade_modules_build($modules);
-
+  $form['tabs']['directories'] = coder_subthemer_directories_build($form_state);
   $form['convert'] = array(
     '#type' => 'submit',
     '#validate' => array('coder_upgrade_conversions_form_validate'),
@@ -77,6 +75,123 @@ function coder_subthemer_form($form, &$form_state) {
 
 /**
  * Returns form content for directories tab.
+ */
+function coder_subthemer_bool_to_string($value) {
+  return is_bool($value) ? (TRUE ? "true" : "false") : $value;
+}
+
+/**
+ * Returns form content for directories tab.
+ */
+function coder_subthemer_build_info_file($theme) {
+  if ($theme['php'] == BACKDROP_MINIMUM_PHP) {
+    unset($theme['php']);
+  }
+  unset($theme['mtime'], $theme['engine']);
+  $content = "";
+  foreach ($theme as $key => $elem) {
+    if (is_array($elem)) { 
+      foreach ($elem as $subkey => $data) { 
+        if (is_array($data)) { 
+          foreach ($data as $subsubkey => $subdata) {
+            $content .= $key ."[" . $subkey . "][] = " . coder_subthemer_bool_to_string($data[$subsubkey]) . "\n";
+          }
+        }
+        else {
+          $content .= $key ."[" . $subkey . "] = " . coder_subthemer_bool_to_string($elem[$subkey]) . "\n";
+        }
+      } 
+    } 
+    elseif ($elem == "") {
+      $content .= $key ." = \n";
+    }
+    else {
+      $content .= $key . " = " . coder_subthemer_bool_to_string($elem) . "\n";
+    }      
+  }
+  return $content;
+}
+
+function coder_subthemer_directories_build(&$form_state) {
+  $dirs = system_rebuild_theme_data();
+  $options = backdrop_map_assoc(array_keys($dirs));
+
+  $default = 'basis';
+  if (isset($form_state['values']['list'])) {
+    $default = $form_state['values']['list'];
+  }
+
+  $directory_fs = array(
+    '#type' => 'fieldset',
+    '#title' => t('Directories'),
+    '#description' => t('... residing in the selected directories (beneath the files directory), or ...'),
+    '#tree' => TRUE,
+  );
+  $directory_fs['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subtheme name'),
+    '#maxlength' => 64,
+    '#description' => t('Subtheme name.'),
+    '#required' => TRUE,
+    '#id' => 'subtheme-name',
+  );
+  $directory_fs['subtheme_name'] = array(
+    '#type' => 'machine_name',
+    '#maxlength' => 128,
+    '#machine_name' => array(
+      'exists' => FALSE,
+      'source' => array('tabs', 'directories', 'name'),
+    ),
+    '#description' => t('Subtheme machine name'),
+  );
+  $directory_fs['list'] = array(
+    '#type' => 'select',
+    '#title' => t('Base theme'),
+    '#options' => $options,
+    '#parents' => array('list'),
+    '#default_value' => $default,
+    '#ajax' => array(
+      'callback' => 'preview_wrapper_change_callback',
+      'wrapper' => 'preview_wrapper',
+      'event' => 'change',
+      'method' => 'replace',
+      'effect' => 'fade',
+    ),
+  );
+  $directory_fs['preview_wrapper'] = array(
+    '#type' => 'container',
+    '#id' => 'preview_wrapper',
+    '#attributes' => array(
+      'class' => array('preview-wrapper clearfix'),
+    ),
+  );
+  //dpm($form_state['values']);
+  dpm($dirs[$default]);
+  if (color_get_info($default)) {
+    $directory_fs['preview_wrapper']['border_preview_medium'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Copy color settings'),
+    );
+  }
+  $directory_fs['preview_wrapper']['copy_template_php'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Copy template.php'),
+  );
+  if (!empty($dirs[$default]->info['stylesheets'])) {
+  }
+  return $directory_fs;
+}
+
+/**
+ * AJAX callback to update the condition settings.
+ */
+function preview_wrapper_change_callback($form, $form_state) {
+  return $form['tabs']['directories']['preview_wrapper'];
+}
+
+
+/**
+ * Returns form content for directories tab.
  *
  * @param array $directories
  *   User selections or default values.
@@ -84,10 +199,14 @@ function coder_subthemer_form($form, &$form_state) {
  * @return array
  *   Form item.
  */
-function coder_subthemer_directories_build(&$directories) {
+function coder_subthemer_directories_buildo(&$directories) {
   // Build the directory list.
   // $deadwood_dir = config_get('coder_upgrade.settings', 'coder_upgrade_dir_old');
   $dirs = system_rebuild_theme_data();
+  $bartik = $dirs['bartik']->info;
+  // $bartik = $dirs->bartik['info'];
+dpm($bartik);
+dpm(coder_subthemer_build_info_file($bartik));
 
   $header = array(
     'name' => array('data' => t('Name'), 'field' => 'name'),
