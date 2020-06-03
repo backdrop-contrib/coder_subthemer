@@ -193,10 +193,9 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
     elseif (in_array($extension = pathinfo($filename, PATHINFO_EXTENSION), array_keys($extensions))) {
       $new_filename = $filename;
       if (strpos($filename, $_coder_upgrade_module_name) === 0) {
-        dpm($new_filename, 'pp');
-        dpm($filename, 'pp');
-        dpm($_coder_upgrade_module_name, 'pop');
-        $new_filename = str_replace($_coder_upgrade_module_name, NEW_MACHINE_NAME, $filename);
+        $new_filename = str_replace($_coder_upgrade_module_name, $item['values']['subtheme_name'], $filename);
+        dpm($new_filename, 'll');
+        dpm($item, 'item');
       }
       copy($dirname . '/' . $filename, $new_dirname . '/' . $new_filename);
       coder_upgrade_log_print("\n*************************");
@@ -206,9 +205,10 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
     }
     else {
       $new_filename = $filename;
-        //dpm($new_filename, 'll');
       if (strpos($filename, $_coder_upgrade_module_name) === 0) {
-        $new_filename = str_replace($_coder_upgrade_module_name, NEW_MACHINE_NAME, $filename);
+        $new_filename = str_replace($_coder_upgrade_module_name, $item['values']['subtheme_name'], $filename);
+        dpm($new_filename, 'll');
+        dpm($item, 'item');
       }
       copy($dirname . '/' . $filename, $new_dirname . '/' . $new_filename);
     }
