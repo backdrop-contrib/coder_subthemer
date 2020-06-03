@@ -112,6 +112,23 @@ function coder_subthemer_build_info_file($theme) {
   return $content;
 }
 
+function coder_subthemer_theme_exists($theme_name) {
+  $themes = list_themes();
+  return isset($themes[$theme_name]);
+}
+
+function coder_subthemer_theme_templates($theme_name) {
+  $dir_path = backdrop_get_path('theme', $theme_name);
+  // dpm(file_scan_directory($dir_path, '/.*tpl\.php/'));
+  $template_list = array();
+  $files = file_scan_directory($dir_path, '/.*tpl\.php/');
+  foreach ($files as $file) {
+    $template_list[$file->uri] = $file->filename;
+  }
+  return $template_list;
+    
+}
+
 function coder_subthemer_directories_build(&$form_state) {
   $dirs = system_rebuild_theme_data();
   $options = backdrop_map_assoc(array_keys($dirs));
@@ -139,7 +156,7 @@ function coder_subthemer_directories_build(&$form_state) {
     '#type' => 'machine_name',
     '#maxlength' => 128,
     '#machine_name' => array(
-      'exists' => FALSE,
+      'exists' => 'coder_subthemer_theme_exists',
       'source' => array('tabs', 'directories', 'name'),
     ),
     '#description' => t('Subtheme machine name'),
@@ -165,20 +182,44 @@ function coder_subthemer_directories_build(&$form_state) {
       'class' => array('preview-wrapper clearfix'),
     ),
   );
-  //dpm($form_state['values']);
-  dpm($dirs[$default]);
-  if (color_get_info($default)) {
+  if (theme_has_color_support($default)) {
     $directory_fs['preview_wrapper']['border_preview_medium'] = array(
     '#type' => 'checkbox',
     '#title' => t('Copy color settings'),
+    );
+  }
+  if (!empty($dirs[$default]->info['settings'])) {
+    $directory_fs['preview_wrapper']['copy_settings'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Copy theme settings'),
     );
   }
   $directory_fs['preview_wrapper']['copy_template_php'] = array(
     '#type' => 'checkbox',
     '#title' => t('Copy template.php'),
   );
-  if (!empty($dirs[$default]->info['stylesheets'])) {
+
+  $template_list = coder_subthemer_theme_templates($default);
+
+  if (!empty($template_list)) {
+    $directory_fs['preview_wrapper']['template_list'] = array(
+      '#type' => 'checkboxes',
+      '#options' => $template_list,
+      '#title' => t('Copy template files'),
+    );
   }
+  $directory_fs['styles'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Add stylesheet paths'),
+    '#description' => t('Subtheme name.'),
+    '#rows' => 3,
+  );
+  $directory_fs['scripts'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Add script paths'),
+    '#description' => t('Subtheme name.'),
+    '#rows' => 3,
+  );
   return $directory_fs;
 }
 
