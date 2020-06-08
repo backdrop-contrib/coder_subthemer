@@ -129,6 +129,13 @@ function coder_subthemer_convert_end($dirname) {
 
 /**
  * Converts files in a directory.
+ */
+function coder_subthemer_make_dir_list($items) {
+  $values = $items[0]['values'];
+}
+
+/**
+ * Converts files in a directory.
  *
  * @param array $upgrades
  *   Array of upgrade sets to apply.
@@ -140,8 +147,6 @@ function coder_subthemer_convert_end($dirname) {
  *   Indicates whether to recurse the subdirectories of $item.
  */
 function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive = TRUE) {
-  global $_coder_upgrade_filename; // Not used by this module, but other modules may find it useful.
-  static $ignore = array(/*'.', '..', '.bzr', '.git', '.svn',*/ 'CVS');
   global $_coder_upgrade_module_name, $_coder_upgrade_replace_files;
 
   $dirname = $item['old_dir'];
@@ -156,62 +161,176 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
     coder_upgrade_clean_directory($new_dirname);
   }
 
+  // Determine module name.
+  coder_upgrade_module_name($dirname, $item);
+  $_coder_upgrade_module_name = !empty($item['module']) ? $item['module'] : $_coder_upgrade_module_name;
+
+  // Create an info file, copy the favicon, logo, copy template.php
+  $allowed_filenames = array(
+    'favicon.ico',
+    'logo.png',
+    'images',
+  );
+  if (!empty($item['values']['copy_template_php'])) {
+    $allowed_filenames[] = 'template.php';
+  }
+  if (!empty($item['values']['copy_settings'])) {
+    $allowed_filenames[] = 'theme-settings.php';
+  }
+    
+  foreach ($allowed_filenames as $filename) {
+    copy($dirname . '/' . $filename, $new_dirname . '/' . $filename);
+  }
+
+  // Create a color directory if needed.
+  if (!empty($item['values']['copy_color'])) {
+    $copy_color_item = array(
+      'name' => $item['name'],
+      'old_dir' => $dirname . '/color',
+      'new_dir' => $new_dirname . '/color',
+    );
+    coder_subthemer_copy_dir($upgrades, $extensions, $copy_color_item, $recursive);
+  }
+
+  // Create a templates directory if needed.
+  // Copy over the tpl.php files.
+  if (isset($item['values']['template_list'])) {
+    $template_list = array_filter($item['values']['template_list']);
+    if (!empty($template_list)) {
+      $template_directory = $new_dirname . '/templates';
+      // mkdir($template_directory);
+      // chmod($template_directory, 0757);
+      foreach ($template_list as $template_path) {
+        $file = basename($template_path);         // $file is set to "index.php"
+        $dest = $template_directory . '/' . $file;
+        $source = BACKDROP_ROOT . '/' . $template_path;
+        copy($source, $dest);
+      }
+    }
+  }
+
+  // Create CSS an JS folders.
+  if (!empty($item['values']['styles'])) {
+    foreach ($item['values']['styles'] as $style) {
+      $pathinfo = pathinfo($style);
+      $path = $new_dirname . '/' . $pathinfo['dirname'];
+      file_prepare_directory($path, FILE_CREATE_DIRECTORY);
+      file_put_contents($new_dirname . '/' . $style, '');
+    }
+  }
+  
+  if (!empty($item['values']['scripts'])) {
+    foreach ($item['values']['scripts'] as $script) {
+      $pathinfo = pathinfo($script);
+      $path = $new_dirname . '/' . $pathinfo['dirname'];
+      file_prepare_directory($path, FILE_CREATE_DIRECTORY);
+      file_put_contents($new_dirname . '/' . $script, '');
+    }
+  }
+  
+  // Modify the template.php code.
+  // Build the info file.
+  $dirs = system_rebuild_theme_data();
+  $data = $dirs[$item['name']]->info;
+  $data['base theme'] = $item['name'];
+  $data['name'] = $item['values']['name'];
+  $data['description'] = t('Subtheme of ') . $item['name'];
+  if (!empty($item['values']['styles'])) {
+    $data['stylesheets'] = array('all' => backdrop_map_assoc($item['values']['styles']));
+  }
+  else {
+    unset($data['stylesheets']);
+  }
+  if (!empty($item['values']['styles'])) {
+    $data['scripts'] = $item['values']['scripts'];
+  }
+  else {
+    unset($data['scripts']);
+  }
+  if (empty($item['values']['copy_settings'])) {
+    unset($data['settings']);
+  }
+
+  $info_file = coder_subthemer_build_info_file($data);
+  $info_file_path = $new_dirname . '/' . $item['values']['subtheme_name'] . '.info';
+  file_put_contents($info_file_path, $info_file);
+
+}
+
+/**
+ * Converts files in a directory.
+ *
+ * @param array $upgrades
+ *   Array of upgrade sets to apply.
+ * @param array $extensions
+ *   Array of file types to convert based on extension.
+ * @param array $item
+ *   Array of a directory containing the files to convert.
+ * @param boolean $recursive
+ *   Indicates whether to recurse the subdirectories of $item.
+ */
+function coder_subthemer_copy_dir($upgrades, $extensions, $item, $recursive = TRUE) {
+  global $_coder_upgrade_filename; // Not used by this module, but other modules may find it useful.
+  global $_coder_upgrade_module_name, $_coder_upgrade_replace_files;
+
+  $dirname = $item['old_dir'];
+  $new_dirname = $item['new_dir'];
+
+  // Create an output directory we can write to.
+  if (!is_dir($new_dirname)) {
+    mkdir($new_dirname);
+    chmod($new_dirname, 0757);
+  }
+  else {
+    coder_upgrade_clean_directory($new_dirname);
+  }
+
+  static $ignore = array(/*'.', '..', '.bzr', '.git', '.svn',*/ 'CVS');
   if (!in_array($dirname, $ignore)) {
     coder_upgrade_log_print("\n*************************");
     coder_upgrade_log_print('Converting the directory => ' . $dirname);
     coder_upgrade_log_print("*************************");
   }
 
-  // Determine module name.
-  coder_upgrade_module_name($dirname, $item);
-  $_coder_upgrade_module_name = !empty($item['module']) ? $item['module'] : $_coder_upgrade_module_name;
-  $_coder_upgrade_module_parent_name = $_coder_upgrade_module_name;
-
   // Loop on files.
   $filenames = scandir($dirname . '/');
   foreach ($filenames as $filename) {
-    $_coder_upgrade_filename = $dirname . '/' . $filename;
-    if (is_dir($dirname . '/' . $filename)) {
-      // Todo: some files may be in .file format but necessary.
-      if (substr(basename($filename), 0, 1) == '.' || in_array(basename($filename), $ignore)) {
-        // Ignore all hidden directories and CVS directory.
-        continue;
+      $_coder_upgrade_filename = $dirname . '/' . $filename;
+      if (is_dir($dirname . '/' . $filename)) {
+        // Todo: some files may be in .file format but necessary.
+        if (substr(basename($filename), 0, 1) == '.' || in_array(basename($filename), $ignore)) {
+          // Ignore all hidden directories and CVS directory.
+          continue;
+        }
+        $new_filename = $filename;
+        if ($recursive) {
+          // TODO Fix this!!!
+          $new_item = array(
+            'name' => $item['name'],
+            'old_dir' => $dirname . '/' . $filename,
+            'new_dir' => $new_dirname . '/' . $filename,
+          );
+          coder_subthemer_copy_dir($upgrades, $extensions, $new_item, $recursive);
+        }
       }
-      $new_filename = $filename;
-      if ($recursive) {
-        // TODO Fix this!!!
-        $new_item = array(
-          'name' => $item['name'],
-          'old_dir' => $dirname . '/' . $filename,
-          'new_dir' => $new_dirname . '/' . $filename,
-        );
-        coder_subthemer_convert_dir($upgrades, $extensions, $new_item, $recursive);
-        // Reset the module name.
-        $_coder_upgrade_module_name = $_coder_upgrade_module_parent_name;
+      elseif (!is_dir($dirname . '/' . $filename) && in_array($extension = pathinfo($filename, PATHINFO_EXTENSION), array_keys($extensions))) {
+        $new_filename = $filename;
+        if (strpos($filename, $_coder_upgrade_module_name) === 0) {
+          $new_filename = str_replace($_coder_upgrade_module_name, $item['values']['subtheme_name'], $filename);
+        }
+        copy($dirname . '/' . $filename, $new_dirname . '/' . $new_filename);
+        coder_upgrade_log_print("\n*************************");
+        coder_upgrade_log_print('Converting the file => ' . $filename);
+        coder_upgrade_log_print("*************************");
+        coder_subthemer_convert_file($dirname . '/' . $filename, $new_dirname . '/' . $new_filename, $_coder_upgrade_replace_files);
       }
-    }
-    elseif (in_array($extension = pathinfo($filename, PATHINFO_EXTENSION), array_keys($extensions))) {
-      $new_filename = $filename;
-      if (strpos($filename, $_coder_upgrade_module_name) === 0) {
-        $new_filename = str_replace($_coder_upgrade_module_name, $item['values']['subtheme_name'], $filename);
-        dpm($new_filename, 'll');
-        dpm($item, 'item');
+      elseif (!is_dir($dirname . '/' . $filename)) {
+        $new_filename = $filename;
+        if (strpos($filename, $_coder_upgrade_module_name) === 0) {
+          $new_filename = str_replace($_coder_upgrade_module_name, $item['values']['subtheme_name'], $filename);
+        }
+        copy($dirname . '/' . $filename, $new_dirname . '/' . $new_filename);
       }
-      copy($dirname . '/' . $filename, $new_dirname . '/' . $new_filename);
-      coder_upgrade_log_print("\n*************************");
-      coder_upgrade_log_print('Converting the file => ' . $filename);
-      coder_upgrade_log_print("*************************");
-      coder_subthemer_convert_file($dirname . '/' . $filename, $new_dirname . '/' . $new_filename, $_coder_upgrade_replace_files);
-    }
-    else {
-      $new_filename = $filename;
-      if (strpos($filename, $_coder_upgrade_module_name) === 0) {
-        $new_filename = str_replace($_coder_upgrade_module_name, $item['values']['subtheme_name'], $filename);
-        dpm($new_filename, 'll');
-        dpm($item, 'item');
-      }
-      copy($dirname . '/' . $filename, $new_dirname . '/' . $new_filename);
-    }
   }
 }
 
@@ -575,7 +694,6 @@ function coder_subthemer_subthemer_regex_info_alter(&$file) {
 
   $from = array();
   $to = array();
-  dpm('jij');
 
   // Change the base theme.
   $from[] = '@^base theme\s+=\s+.*?$@m';

@@ -55,6 +55,7 @@ function coder_subthemer_form($form, &$form_state) {
   //list($upgrades, $extensions, $directories, $modules) = coder_upgrade_conversions_form_defaults($form_state);
 
   // Build the form.
+  $form['#tree'] = FALSE;
   $form['tabs'] = array(
     '#type' => 'vertical_tabs',
     '#default_tab' => 'edit-directories',
@@ -64,7 +65,7 @@ function coder_subthemer_form($form, &$form_state) {
   $form['tabs']['directories'] = coder_subthemer_directories_build($form_state);
   $form['convert'] = array(
     '#type' => 'submit',
-    //'#validate' => array('coder_upgrade_conversions_form_validate'),
+    '#validate' => array('coder_subthemer_form_validate'),
     '#submit' => array('coder_subthemer_form_submit'),
     '#value' => t('Convert files'),
     //'#disabled' => !gplib_version_check(),
@@ -94,11 +95,13 @@ function coder_subthemer_build_info_file($theme) {
       foreach ($elem as $subkey => $data) { 
         if (is_array($data)) { 
           foreach ($data as $subsubkey => $subdata) {
-            $content .= $key ."[" . $subkey . "][] = " . coder_subthemer_bool_to_string($data[$subsubkey]) . "\n";
+            $rendered_key = is_numeric($subkey) ? '' : $subkey;
+            $content .= $key ."[" . $rendered_key . "][] = " . coder_subthemer_bool_to_string($data[$subsubkey]) . "\n";
           }
         }
         else {
-          $content .= $key ."[" . $subkey . "] = " . coder_subthemer_bool_to_string($elem[$subkey]) . "\n";
+          $rendered_key = is_numeric($subkey) ? '' : $subkey;
+          $content .= $key ."[" . $rendered_key . "] = " . coder_subthemer_bool_to_string($elem[$subkey]) . "\n";
         }
       } 
     } 
@@ -119,7 +122,6 @@ function coder_subthemer_theme_exists($theme_name) {
 
 function coder_subthemer_theme_templates($theme_name) {
   $dir_path = backdrop_get_path('theme', $theme_name);
-  // dpm(file_scan_directory($dir_path, '/.*tpl\.php/'));
   $template_list = array();
   $files = file_scan_directory($dir_path, '/.*tpl\.php/');
   foreach ($files as $file) {
@@ -139,11 +141,12 @@ function coder_subthemer_directories_build(&$form_state) {
   }
   $form_state['theme_name'] = $default;
 
+  $directory_fs['#tree'] = FALSE;
   $directory_fs = array(
     '#type' => 'fieldset',
     '#title' => t('Directories'),
     '#description' => t('... residing in the selected directories (beneath the files directory), or ...'),
-    '#tree' => TRUE,
+    '#tree' => FALSE,
   );
   $directory_fs['name'] = array(
     '#type' => 'textfield',
@@ -184,7 +187,7 @@ function coder_subthemer_directories_build(&$form_state) {
     ),
   );
   if (theme_has_color_support($default)) {
-    $directory_fs['base_theme_wrapper']['color'] = array(
+    $directory_fs['base_theme_wrapper']['copy_color'] = array(
     '#type' => 'checkbox',
     '#title' => t('Copy color settings'),
     );
@@ -235,52 +238,35 @@ function base_theme_wrapper_change_callback($form, $form_state) {
 }
 
 /**
- * Returns form content for directories tab.
+ * Submit handler for the module conversion form.
  *
- * @param array $directories
- *   User selections or default values.
- *
- * @return array
- *   Form item.
+ * Execute the selected module conversion code on the selected file types in the
+ * selected directories or modules.
  */
-function coder_subthemer_directories_buildo(&$directories) {
-  // Build the directory list.
-  // $deadwood_dir = config_get('coder_upgrade.settings', 'coder_upgrade_dir_old');
-  $dirs = system_rebuild_theme_data();
-  $bartik = $dirs['bartik']->info;
-  // $bartik = $dirs->bartik['info'];
-dpm($bartik);
-dpm(coder_subthemer_build_info_file($bartik));
-
-  $header = array(
-    'name' => array('data' => t('Name'), 'field' => 'name'),
-    'path' => array('data' => t('Location'), 'field' => 'path'),
-  );
-  $i = 0;
-  $rows = array();
-  foreach ($dirs as $dirname => $dir) {
-    $row = array();
-    $row['name'] = isset($directories[$dirname]) ? l($dir->info['name'], coder_upgrade_patch_link($dirname), array('attributes' => array('target' => '_blank'))) : $dir->info['name'];
-    $row['path'] = $dir->uri;
-    $row['#weight'] = ++$i;
-
-    $rows[$dirname] = $row;
+function coder_subthemer_form_validate($form, &$form_state) {
+  if (!empty($form_state['values']['styles'])) {
+    $styles = explode("\n", $form_state['values']['styles']);
+    // Todo trim front slashes.
+    $styles = array_map('trim', $styles);
+    $styles = array_filter($styles, 'strlen');
+    foreach ($styles as $key => $style) {
+      if (substr_compare($style, '.css', -4, 4) != 0) {
+        $styles[$key] = $style . '.css';
+      }
+    }
+    $form_state['values']['styles'] = $styles;
   }
-  $directory_fs = array(
-    '#type' => 'fieldset',
-    '#title' => t('Directories'),
-    '#description' => t('... residing in the selected directories (beneath the files directory), or ...'),
-    '#tree' => TRUE,
-  );
-  $directory_fs['list'] = array(
-    '#type' => 'tableselect',
-    '#header' => $header,
-    '#options' => $rows,
-    '#default_value' => isset($directories) ? $directories : array(),
-    '#empty' => t('No directories available'),
-  );
-
-  return $directory_fs;
+  if (!empty($form_state['values']['scripts'])) {
+    $scripts = explode("\n", $form_state['values']['scripts']);
+    $scripts = array_map('trim', $scripts);
+    $scripts = array_filter($scripts, 'strlen');
+    foreach ($scripts as $key => $script) {
+      if (substr_compare($script, '.js', -3, 3) != 0) {
+        $scripts[$key] = $script . '.js';
+      }
+    }
+    $form_state['values']['scripts'] = $scripts;
+  }
 }
 
 /**
@@ -292,7 +278,6 @@ dpm(coder_subthemer_build_info_file($bartik));
 function coder_subthemer_form_submit($form, &$form_state) {
   // Rebuild form with user selections.
   $form_state['rebuild'] = TRUE;
-  dpm($form_state);
 
   // Apply conversion routines.
   $success = coder_subthemer_conversions_apply($form_state);
@@ -320,14 +305,13 @@ function coder_subthemer_conversions_apply($form_state) {
   // list($extensions, $items) = coder_subthemer_conversions_prepare($form_state);
   $extensions = backdrop_map_assoc(array('inc', 'info', 'install', 'js', 'php'));
   $new_dir = BACKDROP_ROOT . '/' . coder_upgrade_directory_path('new');
+  form_state_values_clean($form_state);
   $items[] = array(
     'name' => $form_state['theme_name'],
-    'values' => $form_state['values']['directories'],
+    'values' => $form_state['values'],
     'old_dir' => BACKDROP_ROOT . '/' . backdrop_get_path('theme', $form_state['theme_name']),
-    'new_dir' => $new_dir . $form_state['theme_name'],
+    'new_dir' => $new_dir . $form_state['values']['subtheme_name'],
   );
-  dpm($extensions);
-  dpm($items);
 
   // Apply conversion routines.
 //   module_load_include('inc', 'coder_upgrade', 'includes/main');
