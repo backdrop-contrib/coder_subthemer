@@ -169,11 +169,7 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
   $allowed_filenames = array(
     'favicon.ico',
     'logo.png',
-    'images',
   );
-  if (!empty($item['values']['copy_template_php'])) {
-    $allowed_filenames[] = 'template.php';
-  }
   if (!empty($item['values']['copy_settings'])) {
     $allowed_filenames[] = 'theme-settings.php';
   }
@@ -198,8 +194,8 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
     $template_list = array_filter($item['values']['template_list']);
     if (!empty($template_list)) {
       $template_directory = $new_dirname . '/templates';
-      // mkdir($template_directory);
-      // chmod($template_directory, 0757);
+      // Todo: this was mkdir. May need to change if this is modified for CLI.
+      file_prepare_directory($template_directory, FILE_CREATE_DIRECTORY);
       foreach ($template_list as $template_path) {
         $file = basename($template_path);         // $file is set to "index.php"
         $dest = $template_directory . '/' . $file;
@@ -218,7 +214,8 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
       file_put_contents($new_dirname . '/' . $style, '');
     }
   }
-  
+
+dpm($item['values']);
   if (!empty($item['values']['scripts'])) {
     foreach ($item['values']['scripts'] as $script) {
       $pathinfo = pathinfo($script);
@@ -229,6 +226,16 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
   }
   
   // Modify the template.php code.
+  if (!empty($item['values']['copy_template_php'])) {
+    $template_php_content = "<?php\n";
+    $template_php_content .= "/**\n";
+    $template_php_content .= " * @file\n";
+    $template_php_content .= " * " . $item['values']['name'] . " preprocess functions and theme function overrides.\n";
+    $template_php_content .= " */\n";
+
+    file_put_contents($new_dirname . '/template.php', $template_php_content);
+  }
+
   // Build the info file.
   $dirs = system_rebuild_theme_data();
   $data = $dirs[$item['name']]->info;
