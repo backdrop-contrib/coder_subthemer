@@ -11,9 +11,6 @@ if (function_exists('t')) {
   module_load_include('inc', 'coder_subthemer', 'main');
 }
 
-define('NEW_MACHINE_NAME', 'my_module');
-define('NEW_HUMAN_NAME', 'My new module');
-
 
 /**
  * Implements hook_permission().
@@ -65,7 +62,7 @@ function coder_subthemer_form($form, &$form_state) {
     '#type' => 'textfield',
     '#title' => t('Subtheme name'),
     '#maxlength' => 64,
-    '#description' => t('Subtheme name.'),
+    '#description' => t('Human-readable subtheme name.'),
     '#required' => TRUE,
     '#id' => 'subtheme-name',
   );
@@ -114,7 +111,7 @@ function coder_subthemer_form($form, &$form_state) {
   }
   $form['base_theme_wrapper']['copy_template_php'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Copy template.php'),
+    '#title' => t('Create blank template.php'),
     '#parent' => 'copy_template_php',
   );
 
@@ -131,13 +128,13 @@ function coder_subthemer_form($form, &$form_state) {
   $form['styles'] = array(
     '#type' => 'textarea',
     '#title' => t('Add stylesheet paths'),
-    '#description' => t('Subtheme name.'),
+    '#description' => t('Enter relative paths, one per line. A blank CSS file will be created at this path. For example <em>css/style.css</em> (file placed in a "css" folder) or <em>skin.css</em> (file placed in root).'),
     '#rows' => 3,
   );
   $form['scripts'] = array(
     '#type' => 'textarea',
     '#title' => t('Add script paths'),
-    '#description' => t('Subtheme name.'),
+    '#description' => t('Enter relative paths, one per line. A blank JS file will be created at this path. For example <em>js/scripts.js</em> (file placed in a "js" folder) or <em>js-scripts.js</em> (file placed in root).'),
     '#rows' => 3,
   );
   $form['convert'] = array(
@@ -292,28 +289,10 @@ function coder_subthemer_conversions_apply($form_state) {
     'new_dir' => $new_dir . $form_state['values']['subtheme_name'],
   );
 
-  // Apply conversion routines.
-//   module_load_include('inc', 'coder_upgrade', 'includes/main');
-  if (config_get('coder_upgrade.settings', 'coder_upgrade_use_separate_process')) {
-/*     // Conversion routines will be run in a separate process.
-    backdrop_set_message(t('Module conversion routines will run in a separate process.'));
-    $path = coder_subthemer_parameters_save($upgrades, $extensions, $items);
-    $script = backdrop_get_path('module', 'coder_upgrade') . '/scripts/coder_upgrade.run.php';
-    $output = coder_upgrade_directory_path('base') . 'coder_upgrade.run.txt';
-    $command = "php $script -- file=$path > $output"; // " 2>&1";
-    // Execute the command and capture the output.
-    exec($command, $errors, $success);
-    $success = $success === 0;
-    if ($success && !empty($errors)) {
-      backdrop_set_message(trim(implode("\n", $errors)), 'error');
-    }
- */  }
-  else {
-    // Conversion routines will be run in the same process.
-    module_load_include('inc', 'coder_upgrade', 'includes/main');
-    backdrop_set_message(t('Module conversion routines will run in the same process.'));
-    $success = coder_subthemer_start($extensions, $items);
-  }
+  // Conversion routines will be run in the same process.
+  module_load_include('inc', 'coder_upgrade', 'includes/main');
+  backdrop_set_message(t('Module conversion routines will run in the same process.'));
+  $success = coder_subthemer_start($extensions, $items);
 
   return $success;
 }

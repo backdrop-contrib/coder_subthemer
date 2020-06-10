@@ -27,7 +27,7 @@
  */
 function coder_subthemer_start($extensions, $items, $recursive = TRUE) {
   // Declare global variables.
-  global $_coder_upgrade_log, $_coder_upgrade_debug, $_coder_upgrade_module_name, $_coder_upgrade_replace_files, $_coder_upgrade_class_files;
+  global $_coder_upgrade_log, $_coder_upgrade_debug, $_coder_upgrade_module_subtheme_name, $_coder_upgrade_module_name, $_coder_upgrade_replace_files, $_coder_upgrade_class_files;
 //  global $_coder_upgrade_dirname; // Not used.
 
   if (!is_array($extensions) || empty($extensions)) {
@@ -67,8 +67,8 @@ function coder_subthemer_start($extensions, $items, $recursive = TRUE) {
   // Loop on items.
   foreach ($items as $item) {
     // Set the module name so the <convert_begin_alter> functions have this.
-    //coder_upgrade_module_name($item['old_dir'], $item);
-    //$_coder_upgrade_module_name = !empty($item['module']) ? $item['module'] : '';
+    $_coder_upgrade_module_name = $item['name'];
+    $_coder_upgrade_module_subtheme_name = $item['values']['subtheme_name'];
 
     if (!isset($_SERVER['HTTP_USER_AGENT']) || strpos($_SERVER['HTTP_USER_AGENT'], 'simpletest') === FALSE) {
       // Process the directory before conversion routines are applied.
@@ -173,9 +173,12 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
   if (!empty($item['values']['copy_settings'])) {
     $allowed_filenames[] = 'theme-settings.php';
   }
+
+  backdrop_alter('coder_subthemer_allowed_filenames', $allowed_filenames);
     
   foreach ($allowed_filenames as $filename) {
     copy($dirname . '/' . $filename, $new_dirname . '/' . $filename);
+    coder_subthemer_convert_file($dirname . '/' . $filename, $new_dirname . '/' . $filename, $_coder_upgrade_replace_files = FALSE);
   }
 
   // Create a color directory if needed.
@@ -395,27 +398,13 @@ function coder_subthemer_apply_regex($filename, &$new) {
   $extension = pathinfo($filename, PATHINFO_EXTENSION);
   $is_js_file = $extension == 'js';
   $is_info_file = $extension == 'info';
-  $is_install_file = $extension == 'install';
 
   if ($is_js_file) {
-    // Apply regular expression conversion routines for info file.
+    // Apply regular expression conversion routines for js file.
     coder_upgrade_log_print("Calling hook_upgrade_regex_js_alter");
     backdrop_alter('subthemer_upgrade_regex_js', $new);
     coder_upgrade_log_print("Completed hook_upgrade_regex_js_alter");
     return;
-  }
-  if ($is_info_file) {
-    // Apply regular expression conversion routines for info file.
-    coder_upgrade_log_print("Calling hook_upgrade_regex_info_alter");
-    backdrop_alter('subthemer_regex_info', $new);
-    coder_upgrade_log_print("Completed hook_upgrade_regex_info_alter");
-    return;
-  }
-  if ($is_install_file) {
-    // Apply regular expression conversion routines for install file.
-    coder_upgrade_log_print("Calling hook_upgrade_regex_install_alter");
-    backdrop_alter('subthemer_upgrade_regex_install', $new);
-    coder_upgrade_log_print("Completed hook_upgrade_regex_install_alter");
   }
   // Apply regular expression conversion routines.
   coder_upgrade_log_print("Calling hook_upgrade_regex_alter");
@@ -479,14 +468,6 @@ function coder_subthemer_apply_parser($filename, &$new) {
   backdrop_alter('subthemer_upgrade_file', $reader);
   coder_upgrade_log_print("Completed hook_upgrade_file_alter");
   coder_upgrade_memory_print('apply file conversions');
-
-  if ($is_install_file) {
-    // Apply parser conversion routines for install file.
-    coder_upgrade_log_print("Calling hook_upgrade_parser_install_alter");
-    backdrop_alter('subthemer_upgrade_parser_install', $reader);
-    coder_upgrade_log_print("Completed hook_upgrade_parser_install_alter");
-    coder_upgrade_memory_print('apply install file conversions');
-  }
 
   // Use writer to redo file.
   $writer = PGPWriter::getInstance();
@@ -565,11 +546,6 @@ function coder_subthemer_convert_functions(&$reader) {
     $name = &$item->name;
     cdp("name = $name");
 
-    // Convert theme_xxx function calls.
-//    if (strpos($name, 'theme_') === 0) {
-//      backdrop_alter('subthemer_upgrade_theme', $node, $reader);
-//      continue;
-//    }
 
     /*
      * If the function name does not begin with the module name, then ignore it.
@@ -613,6 +589,34 @@ function coder_subthemer_convert_functions(&$reader) {
     }
     backdrop_alter('subthemer_upgrade_hook', $node, $reader, $hook);
   }
+}
+
+/**
+ * Implements hook_subthemer_upgrade_regex_alter().
+ *
+ * Alters the text of a code file using regular expressions.
+ *
+ * @param string $file
+ *   The text of the file to convert.
+ */
+function coder_subthemer_subthemer_upgrade_regex_alter(&$file) {
+  cdp("inside " . __FUNCTION__);
+  global $_coder_upgrade_module_name;
+  global $_coder_upgrade_module_subtheme_name;
+
+  $hook = 'info_file';
+  $cur = $file;
+  $new = $cur;
+
+  $from = array();
+  $to = array();
+
+  // Change the base theme.
+  $from[] = $_coder_upgrade_module_name;
+  $to[] = $_coder_upgrade_module_subtheme_name;
+
+  coder_upgrade_do_conversions($from, $to, $new);
+  coder_upgrade_save_changes($cur, $new, $file, $hook);
 }
 
 /**
@@ -682,42 +686,4 @@ function coder_subthemer_module_files($dirname) {
     }
   }
   return $item;
-}
-
-/**
- * Implements hook_upgrade_regex_info_alter().
- *
- * Alters the text of a code file using regular expressions.
- *
- * Module Info / Install
- * http://drupal.org/node/224333#info_core_7 (this anchor does not exist on the chronological page)
- *
- * @param string $file
- *   The text of the file to convert.
- */
-function coder_subthemer_subthemer_regex_info_alter(&$file) {
-  cdp("inside " . __FUNCTION__);
-  global $_coder_upgrade_module_name;
-  $hook = 'info_file';
-  $cur = $file;
-  $new = $cur;
-
-  $from = array();
-  $to = array();
-
-  // Change the base theme.
-  $from[] = '@^base theme\s+=\s+.*?$@m';
-  $to[] = "";
-
-  // Change the name.
-  $from[] = '@^name\s+=\s+.*?$@m';
-  $to[] = "name = " . NEW_HUMAN_NAME;
-
-  // Change the description.
-  $from[] = '@^description\s+=\s+.*?$@m';
-  $to[] = "description = Subtheme of " . $_coder_upgrade_module_name . "\nbase theme = " . $_coder_upgrade_module_name;
-
-
-  coder_upgrade_do_conversions($from, $to, $new);
-  coder_upgrade_save_changes($cur, $new, $file, $hook);
 }
