@@ -223,14 +223,9 @@ function coder_subthemer_bool_to_string($value) {
  * Returns form content for directories tab.
  */
 function coder_subthemer_build_info_file($theme) {
-  if ($theme['php'] == BACKDROP_MINIMUM_PHP) {
-    unset($theme['php']);
-  }
-  unset($theme['mtime'], $theme['engine']);
   $content = "";
   foreach ($theme as $key => $elem) {
     if (is_array($elem)) { 
-      dpm($elem, 'bodo');
       foreach ($elem as $subkey => $data) { 
         if (is_array($data)) { 
           foreach ($data as $subsubkey => $subdata) {
@@ -244,11 +239,15 @@ function coder_subthemer_build_info_file($theme) {
         }
       } 
     } 
+    elseif ($elem == "newline") {
+      $content .= "\n";
+    }
     elseif ($elem == "") {
     }
+    elseif ($elem == "newline") {
+      $content .= "\n";
+    }
     else {
-      dpm($elem, 'boo');
-
       $content .= $key . " = " . coder_subthemer_bool_to_string($elem) . "\n";
     }      
   }

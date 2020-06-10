@@ -215,7 +215,6 @@ function coder_subthemer_convert_dir($upgrades, $extensions, $item, $recursive =
     }
   }
 
-dpm($item['values']);
   if (!empty($item['values']['scripts'])) {
     foreach ($item['values']['scripts'] as $script) {
       $pathinfo = pathinfo($script);
@@ -239,26 +238,30 @@ dpm($item['values']);
   // Build the info file.
   $dirs = system_rebuild_theme_data();
   $data = $dirs[$item['name']]->info;
-  $data['base theme'] = $item['name'];
-  $data['name'] = $item['values']['name'];
-  $data['description'] = t('Subtheme of ') . $item['name'];
+  $new_data['name'] = $item['values']['name'];
+  $new_data['description'] = t('Subtheme of ') . $item['name'];
+  $new_data['type'] = 'theme';
+  $new_data['backdrop'] = '1.x';
+  $new_data['base theme'] = $item['name'];
+  $new_data['newline1'] = 'newline';
+
   if (!empty($item['values']['styles'])) {
-    $data['stylesheets'] = array('all' => backdrop_map_assoc($item['values']['styles']));
+    $new_data['stylesheets'] = array('all' => backdrop_map_assoc($item['values']['styles']));
   }
-  else {
-    unset($data['stylesheets']);
-  }
+  $new_data['newline2'] = 'newline';
+
   if (!empty($item['values']['styles'])) {
-    $data['scripts'] = $item['values']['scripts'];
+    $new_data['scripts'] = $item['values']['scripts'];
   }
-  else {
-    unset($data['scripts']);
-  }
-  if (empty($item['values']['copy_settings'])) {
-    unset($data['settings']);
+  $new_data['newline3'] = 'newline';
+
+  if (empty($item['values']['copy_settings']) && !empty($item['values']['copy_color'])) {
+    $new_data['settings']['color'] = 'true';
   }
 
-  $info_file = coder_subthemer_build_info_file($data);
+  backdrop_alter('coder_subthemer_build_info_file', $new_data);
+
+  $info_file = coder_subthemer_build_info_file($new_data);
   $info_file_path = $new_dirname . '/' . $item['values']['subtheme_name'] . '.info';
   file_put_contents($info_file_path, $info_file);
 
